@@ -3,7 +3,7 @@ const usersService = require('../../../core/users/users.service');
 const rolesService = require('../../../core/roles/roles.service');
 const { ROLES } = require('../../../core/permissions');
 const { AppError, notImplemented } = require('../../../shared/utils/AppError');
-const { keTanggalDb, dariTanggalDb } = require('../../../shared/utils/date');
+const { hariIni, keTanggalDb, dariTanggalDb, selisihHari } = require('../../../shared/utils/date');
 
 const internSelect = {
   id: true,
@@ -54,7 +54,18 @@ async function getRoleAnakMagangId() {
 
 // Data magang milik pengguna yang sedang login. Dipakai fitur absensi, logbook, dan tugas.
 async function getByUserId(userId) {
-  const intern = await prisma.mgIntern.findUnique({ where: { user_id: userId } });
+  const intern = await prisma.mgIntern.findUnique({
+    where: { user_id: userId },
+    include: {
+      user: {
+        select: {
+          nama: true,
+          email: true,
+          aktif: true,
+        },
+      },
+    },
+  });
   if (!intern) throw new AppError(404, 'Data anak magang untuk akun ini tidak ditemukan');
   return intern;
 }
@@ -89,8 +100,11 @@ async function getById(id) {
 
 // MG-08: profil sendiri + sisa hari masa magang (pakai selisihHari dari shared/utils/date)
 async function getProfilSaya(userId) {
-  // TODO MG-08
-  throw notImplemented('MG-08');
+  const intern = await getByUserId(userId);
+  return {
+    ...toInternResponse(intern),
+    sisa_hari: Math.max(0, selisihHari(hariIni(), dariTanggalDb(intern.tanggal_selesai))),
+  };
 }
 
 async function create(data) {
@@ -159,8 +173,12 @@ async function update(id, data) {
 
 // MG-02 / BR-06: hanya admin (route sudah dibatasi permission magang:kelola)
 async function setStatusKerja(id, statusKerja) {
-  // TODO MG-02
-  throw notImplemented('MG-02');
+  const result = await prisma.mgIntern.updateMany({
+    where: { id },
+    data: { status_kerja: statusKerja },
+  });
+  if (result.count === 0) throw new AppError(404, 'Data anak magang tidak ditemukan');
+  return getById(id);
 }
 
 module.exports = { getByUserId, list, getById, getProfilSaya, create, update, setStatusKerja };

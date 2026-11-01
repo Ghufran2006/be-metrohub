@@ -17,8 +17,12 @@ async function list(filter) {
 
 // MG-08: tugas milik anak magang yang login
 async function listSaya(userId) {
-  // TODO MG-08
-  throw notImplemented('MG-08');
+  const intern = await internsService.getByUserId(userId);
+  const tasks = await prisma.mgTask.findMany({
+    where: { intern_id: intern.id },
+    orderBy: { tenggat: 'asc' },
+  });
+  return tasks.map(denganTandaTerlambat);
 }
 
 async function create(data, adminId) {
