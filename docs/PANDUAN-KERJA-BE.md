@@ -138,6 +138,7 @@ Satu fitur dianggap selesai jika:
 - [ ] Tidak ada query ke tabel modul lain, tidak ada foreign key lintas modul
 - [ ] Migration (jika ada) berawalan modul dan sudah jalan dari database kosong
 - [ ] Request Postman (sukses + gagal) ditambahkan ke koleksi
+- [ ] Endpoint baru/berubah diperbarui di `src/docs/openapi.js` (Swagger, `/api/v1/docs`); hapus tanda `belum: true` jika sudah jadi
 - [ ] Status endpoint di `KONTEKS-PROJECT.md` diubah dari ⏳ ke ✅
 - [ ] Di-review dan di-approve partner
 

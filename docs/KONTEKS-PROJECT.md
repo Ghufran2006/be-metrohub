@@ -59,12 +59,12 @@ Prefix semua endpoint: `/api/v1`. Status: ✅ sudah berjalan, ⏳ masih `TODO` (
 | `POST /auth/logout` | publik | CR-01 | ✅ |
 | `GET /auth/me` | login | CR-01 | ✅ |
 | `PATCH /auth/password` | login | Profil | ⏳ |
-| `GET /users` · `POST /users` | core:pengguna | CR-02 | ⏳ |
-| `GET /users/:id` · `PATCH /users/:id` | core:pengguna | CR-02 | ⏳ |
-| `PATCH /users/:id/status` | core:pengguna | CR-02 | ⏳ |
-| `GET /roles` | core:pengguna | CR-03 | ⏳ |
+| `GET /users` · `POST /users` | core:pengguna | CR-02 | ✅ |
+| `GET /users/:id` · `PATCH /users/:id` | core:pengguna | CR-02 | ✅ |
+| `PATCH /users/:id/status` | core:pengguna | CR-02 | ✅ |
+| `GET /roles` | core:pengguna | CR-03 | ✅ |
 | `GET /roles/permissions` | core:pengguna | CR-03 | ✅ |
-| `GET /roles/:id/permissions` · `PUT /roles/:id/permissions` | core:pengguna | CR-03 | ⏳ |
+| `GET /roles/:id/permissions` · `PUT /roles/:id/permissions` | core:pengguna | CR-03 | ✅ |
 | `GET /dashboard` | core:dashboard | CR-04 | ✅ |
 | `GET /office-settings` · `PUT /office-settings` | core:lokasi | CR-05 | ✅ |
 | `GET /menu` | login | CR-03 | ✅ |
@@ -73,34 +73,34 @@ Prefix semua endpoint: `/api/v1`. Status: ✅ sudah berjalan, ⏳ masih `TODO` (
 
 | Method & Path | Permission | Kode | Status |
 |---|---|---|---|
-| `GET /interns/me` | magang:absen | MG-08 | ⏳ |
-| `GET /interns` · `POST /interns` | magang:kelola | MG-01 | ⏳ |
-| `GET /interns/:id` · `PATCH /interns/:id` | magang:kelola | MG-01 | ⏳ |
-| `PATCH /interns/:id/status-kerja` | magang:kelola | MG-02 | ⏳ |
-| `GET /attendances/today` | magang:absen | MG-03/05 | ⏳ |
-| `POST /attendances/checkin` (multipart: `foto`, `latitude`, `longitude`) | magang:absen | MG-03 | ⏳ |
-| `POST /attendances/checkout` (multipart) | magang:absen | MG-05 | ⏳ |
+| `GET /interns/me` | magang:absen | MG-08 | ✅ |
+| `GET /interns` · `POST /interns` | magang:kelola | MG-01 | ✅ |
+| `GET /interns/:id` · `PATCH /interns/:id` | magang:kelola | MG-01 | ✅ |
+| `PATCH /interns/:id/status-kerja` | magang:kelola | MG-02 | ✅ |
+| `GET /attendances/today` | magang:absen | MG-03/05 | ✅ |
+| `POST /attendances/checkin` (multipart: `foto`, `latitude`, `longitude`) | magang:absen | MG-03 | ✅ |
+| `POST /attendances/checkout` (multipart) | magang:absen | MG-05 | ✅ |
 | `GET /attendances/me` | magang:absen | MG-09 | ⏳ |
 | `GET /attendances` (rekap) | magang:kelola | MG-09 | ⏳ |
 | `PATCH /attendances/:id` (koreksi) | magang:kelola | MG-10 | ⏳ |
 | `GET /attendances/photos/:filename` | magang:kelola | NF-06 | ✅ |
-| `GET /logbooks/today` · `PUT /logbooks/today` | magang:absen | MG-04 | ⏳ |
-| `GET /logbooks/me` | magang:absen | MG-04 | ⏳ |
+| `GET /logbooks/today` · `PUT /logbooks/today` | magang:absen | MG-04 | ✅ |
+| `GET /logbooks/me` | magang:absen | MG-04 | ✅ |
 | `GET /logbooks` | magang:kelola | MG-09 | ⏳ |
-| `GET /tasks/me` | magang:absen | MG-08 | ⏳ |
-| `PATCH /tasks/:id/progress` | magang:absen | MG-07 | ⏳ |
-| `GET /tasks` · `POST /tasks` | magang:kelola | MG-06 | ⏳ |
-| `PATCH /tasks/:id` · `DELETE /tasks/:id` | magang:kelola | MG-06 | ⏳ |
+| `GET /tasks/me` | magang:absen | MG-08 | ✅ |
+| `PATCH /tasks/:id/progress` | magang:absen | MG-07 | ✅ |
+| `GET /tasks` · `POST /tasks` | magang:kelola | MG-06 | ✅ |
+| `PATCH /tasks/:id` · `DELETE /tasks/:id` | magang:kelola | MG-06 | ✅ |
 
 ### Modul Keuangan (`/keuangan`)
 
 | Method & Path | Permission | Kode | Status |
 |---|---|---|---|
-| `GET /categories` · `POST /categories` | keuangan:kelola | KU-01 | ⏳ |
-| `PATCH /categories/:id` · `DELETE /categories/:id` | keuangan:kelola | KU-01 | ⏳ |
+| `GET /categories` · `POST /categories` | keuangan:kelola | KU-01 | ✅ |
+| `PATCH /categories/:id` · `DELETE /categories/:id` | keuangan:kelola | KU-01 | ✅ |
 | `GET /transactions` (debit-kredit + saldo berjalan) | keuangan:kelola | KU-04 | ⏳ |
-| `POST /transactions` | keuangan:kelola | KU-02 | ⏳ |
-| `PATCH /transactions/:id` · `DELETE /transactions/:id` | keuangan:kelola | KU-03 | ⏳ |
+| `POST /transactions` | keuangan:kelola | KU-02 | ✅ |
+| `PATCH /transactions/:id` · `DELETE /transactions/:id` | keuangan:kelola | KU-03 | ✅ |
 | `GET /summary?bulan=YYYY-MM` | keuangan:lihat | KU-05 | ⏳ |
 
 ### Format respons
@@ -159,7 +159,7 @@ Foto absensi disimpan di `UPLOAD_DIR/attendances/` (Railway Volume). Database ha
 | Kode | Target | Status |
 |---|---|---|
 | NF-03 | HTTP dialihkan ke HTTPS | ✅ `forceHttps` (production) |
-| NF-04 | Password bcrypt, sesi berakhir saat logout | ✅ login/logout; hash saat buat user ⏳ |
+| NF-04 | Password bcrypt, sesi berakhir saat logout | ✅ login/logout, hash saat buat/ubah user |
 | NF-05 | Setiap endpoint cek permission, tanpa izin → 403 | ✅ `authorize` |
 | NF-06 | Foto absensi hanya bisa dibuka admin | ✅ |
 | NF-07 | Foto maksimal 500 KB | ✅ `uploadPhoto` (kompresi di frontend) |

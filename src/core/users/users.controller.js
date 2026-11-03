@@ -19,7 +19,7 @@ async function update(req, res) {
 
 async function setStatus(req, res) {
   const { id } = req.validated.params;
-  ok(res, await usersService.setStatus(id, req.validated.body.aktif), 'Status pengguna berhasil diubah');
+  ok(res, await usersService.setStatus(id, req.validated.body.aktif, req.user.id), 'Status pengguna berhasil diubah');
 }
 
 module.exports = { list, getById, create, update, setStatus };

@@ -1,23 +1,54 @@
 const prisma = require('../../../config/prisma');
 const internsService = require('../interns/interns.service');
-const { hariIni, keTanggalDb } = require('../../../shared/utils/date');
-const { notImplemented } = require('../../../shared/utils/AppError');
+const { hariIni, keTanggalDb, dariTanggalDb } = require('../../../shared/utils/date');
+const { AppError, notImplemented } = require('../../../shared/utils/AppError');
 
+const formatLogbook = (l) => ({ ...l, tanggal: dariTanggalDb(l.tanggal) });
+
+// MG-04: logbook hari ini milik pengguna (null jika belum ada)
 async function getHariIni(userId) {
-  // TODO MG-04: logbook hari ini milik pengguna (null jika belum ada)
-  throw notImplemented('MG-04');
+  const intern = await internsService.getByUserId(userId);
+  const logbook = await prisma.mgLogbook.findUnique({
+    where: { intern_id_tanggal: { intern_id: intern.id, tanggal: keTanggalDb(hariIni()) } },
+  });
+  return logbook && formatLogbook(logbook);
 }
 
 // MG-04: upsert berdasarkan (intern_id, tanggal hari ini)
 async function simpanHariIni(userId, isi) {
-  // TODO MG-04: tolak jika belum check-in hari ini,
-  // dan tolak perubahan jika sudah check-out
-  throw notImplemented('MG-04');
+  const intern = await internsService.getByUserId(userId);
+  const tanggal = keTanggalDb(hariIni());
+
+  const absensi = await prisma.mgAttendance.findUnique({
+    where: { intern_id_tanggal: { intern_id: intern.id, tanggal } },
+    select: { jam_checkout: true },
+  });
+  if (!absensi) throw new AppError(400, 'Lakukan check-in terlebih dahulu sebelum mengisi logbook');
+  if (absensi.jam_checkout) throw new AppError(400, 'Logbook tidak bisa diubah setelah check-out');
+
+  const logbook = await prisma.mgLogbook.upsert({
+    where: { intern_id_tanggal: { intern_id: intern.id, tanggal } },
+    create: { intern_id: intern.id, tanggal, isi },
+    update: { isi },
+  });
+  return formatLogbook(logbook);
 }
 
-async function riwayatSaya(userId, periode) {
-  // TODO MG-04
-  throw notImplemented('MG-04');
+async function riwayatSaya(userId, { dari, sampai } = {}) {
+  const intern = await internsService.getByUserId(userId);
+  const logbooks = await prisma.mgLogbook.findMany({
+    where: {
+      intern_id: intern.id,
+      ...((dari || sampai) && {
+        tanggal: {
+          ...(dari && { gte: keTanggalDb(dari) }),
+          ...(sampai && { lte: keTanggalDb(sampai) }),
+        },
+      }),
+    },
+    orderBy: { tanggal: 'desc' },
+  });
+  return logbooks.map(formatLogbook);
 }
 
 // MG-09: semua logbook, filter intern_id dan periode
