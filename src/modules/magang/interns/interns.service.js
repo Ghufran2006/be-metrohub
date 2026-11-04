@@ -91,7 +91,6 @@ async function create({ nama, email, password, asal_kampus, tanggal_mulai, tangg
 async function update(id, { nama, email, ...data }) {
   const lama = await getById(id);
 
-  // Schema hanya bisa membandingkan jika kedua tanggal dikirim; di sini dibandingkan dengan data tersimpan
   const tanggalMulai = data.tanggal_mulai ?? lama.tanggal_mulai;
   const tanggalSelesai = data.tanggal_selesai ?? lama.tanggal_selesai;
   if (tanggalSelesai < tanggalMulai) {

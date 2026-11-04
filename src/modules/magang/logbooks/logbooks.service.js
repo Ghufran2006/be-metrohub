@@ -3,7 +3,7 @@ const internsService = require('../interns/interns.service');
 const { hariIni, keTanggalDb, dariTanggalDb } = require('../../../shared/utils/date');
 const { AppError, notImplemented } = require('../../../shared/utils/AppError');
 
-const formatLogbook = (l) => ({ ...l, tanggal: dariTanggalDb(l.tanggal) });
+const formatLogbook = (logbook) => ({ ...logbook, tanggal: dariTanggalDb(logbook.tanggal) });
 
 // MG-04: logbook hari ini milik pengguna (null jika belum ada)
 async function getHariIni(userId) {
@@ -11,7 +11,7 @@ async function getHariIni(userId) {
   const logbook = await prisma.mgLogbook.findUnique({
     where: { intern_id_tanggal: { intern_id: intern.id, tanggal: keTanggalDb(hariIni()) } },
   });
-  return logbook && formatLogbook(logbook);
+  return logbook ? formatLogbook(logbook) : null;
 }
 
 // MG-04: upsert berdasarkan (intern_id, tanggal hari ini)
@@ -46,7 +46,7 @@ async function riwayatSaya(userId, { dari, sampai } = {}) {
         },
       }),
     },
-    orderBy: { tanggal: 'desc' },
+    orderBy: [{ tanggal: 'desc' }, { id: 'desc' }],
   });
   return logbooks.map(formatLogbook);
 }

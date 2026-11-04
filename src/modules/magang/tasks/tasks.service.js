@@ -49,9 +49,9 @@ async function listSaya(userId) {
   const intern = await internsService.getByUserId(userId);
   const tasks = await prisma.mgTask.findMany({
     where: { intern_id: intern.id },
-    orderBy: [{ tenggat: 'asc' }, { id: 'asc' }],
+    orderBy: { tenggat: 'asc' },
   });
-  return tasks.map(formatTugas);
+  return tasks.map(denganTandaTerlambat);
 }
 
 // MG-06: tugas langsung muncul di halaman anak magang yang dituju
