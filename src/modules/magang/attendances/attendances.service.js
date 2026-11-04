@@ -5,7 +5,7 @@ const internsService = require('../interns/interns.service');
 const officeSettingsService = require('../../../core/office-settings/officeSettings.service');
 const { hitungJarakMeter } = require('../../../shared/utils/geo');
 const { hariIni, keTanggalDb, dariTanggalDb } = require('../../../shared/utils/date');
-const { AppError, notImplemented } = require('../../../shared/utils/AppError');
+const { AppError } = require('../../../shared/utils/AppError');
 
 const FOTO_DIR = 'attendances'; // subfolder di dalam UPLOAD_DIR
 const FOTO_ROOT = path.resolve(env.UPLOAD_DIR, FOTO_DIR);
@@ -20,6 +20,13 @@ function formatAbsensi(a) {
     lng_checkin: desimal(a.lng_checkin),
     lat_checkout: desimal(a.lat_checkout),
     lng_checkout: desimal(a.lng_checkout),
+  };
+}
+
+function formatRekapAbsensi(attendance) {
+  return {
+    ...formatAbsensi(attendance),
+    checkout_terlambat: !attendance.jam_checkout && dariTanggalDb(attendance.tanggal) < hariIni(),
   };
 }
 
@@ -138,20 +145,74 @@ async function checkOut(userId, { latitude, longitude }, foto) {
 }
 
 async function riwayatSaya(userId, periode) {
-  // TODO MG-09 (versi anak magang)
-  throw notImplemented('MG-09');
+  const intern = await internsService.getByUserId(userId);
+  const { dari, sampai } = periode;
+  const attendances = await prisma.mgAttendance.findMany({
+    where: {
+      intern_id: intern.id,
+      ...((dari || sampai) && {
+        tanggal: {
+          ...(dari && { gte: keTanggalDb(dari) }),
+          ...(sampai && { lte: keTanggalDb(sampai) }),
+        },
+      }),
+    },
+    orderBy: [{ tanggal: 'desc' }, { id: 'desc' }],
+  });
+  return attendances.map(formatRekapAbsensi);
 }
 
 // MG-09: jam, foto, lokasi; hari tanpa check-out ditandai (jam_checkout null & tanggal < hari ini)
 async function rekap(filter) {
-  // TODO MG-09
-  throw notImplemented('MG-09');
+  const { dari, sampai, intern_id } = filter;
+  const attendances = await prisma.mgAttendance.findMany({
+    where: {
+      ...(intern_id && { intern_id }),
+      ...((dari || sampai) && {
+        tanggal: {
+          ...(dari && { gte: keTanggalDb(dari) }),
+          ...(sampai && { lte: keTanggalDb(sampai) }),
+        },
+      }),
+    },
+    include: { intern: { select: { user: { select: { nama: true, email: true } } } } },
+    orderBy: [{ tanggal: 'desc' }, { intern_id: 'asc' }, { id: 'desc' }],
+  });
+  return attendances.map(({ intern, ...attendance }) => ({
+    ...formatRekapAbsensi(attendance),
+    nama_anak_magang: intern.user.nama,
+    email_anak_magang: intern.user.email,
+  }));
 }
 
 // MG-10: simpan keterangan_koreksi dan dikoreksi_oleh = adminId
 async function koreksi(id, data, adminId) {
-  // TODO MG-10
-  throw notImplemented('MG-10');
+  const attendance = await prisma.mgAttendance.findUnique({ where: { id } });
+  if (!attendance) throw new AppError(404, 'Data absensi tidak ditemukan');
+
+  const jamCheckin = data.jam_checkin ? new Date(data.jam_checkin) : attendance.jam_checkin;
+  const jamCheckout =
+    data.jam_checkout === undefined
+      ? attendance.jam_checkout
+      : data.jam_checkout === null
+        ? null
+        : new Date(data.jam_checkout);
+  if (jamCheckout && jamCheckout < jamCheckin) {
+    throw new AppError(400, 'Jam check-out tidak boleh sebelum jam check-in');
+  }
+
+  const updated = await prisma.mgAttendance.update({
+    where: { id },
+    data: {
+      ...(data.jam_checkin && { jam_checkin: new Date(data.jam_checkin) }),
+      ...(data.jam_checkout !== undefined && {
+        jam_checkout: data.jam_checkout === null ? null : new Date(data.jam_checkout),
+      }),
+      keterangan_koreksi: data.keterangan_koreksi,
+      dikoreksi_oleh: adminId,
+    },
+  });
+  return formatAbsensi(updated);
 }
 
 // NF-06: foto hanya bisa diakses lewat endpoint admin ini, bukan static file

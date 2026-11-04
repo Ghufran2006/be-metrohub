@@ -80,13 +80,13 @@ Prefix semua endpoint: `/api/v1`. Status: ✅ sudah berjalan, ⏳ masih `TODO` (
 | `GET /attendances/today` | magang:absen | MG-03/05 | ✅ |
 | `POST /attendances/checkin` (multipart: `foto`, `latitude`, `longitude`) | magang:absen | MG-03 | ✅ |
 | `POST /attendances/checkout` (multipart) | magang:absen | MG-05 | ✅ |
-| `GET /attendances/me` | magang:absen | MG-09 | ⏳ |
-| `GET /attendances` (rekap) | magang:kelola | MG-09 | ⏳ |
-| `PATCH /attendances/:id` (koreksi) | magang:kelola | MG-10 | ⏳ |
+| `GET /attendances/me` | magang:absen | MG-09 | ✅ |
+| `GET /attendances` (rekap) | magang:kelola | MG-09 | ✅ |
+| `PATCH /attendances/:id` (koreksi) | magang:kelola | MG-10 | ✅ |
 | `GET /attendances/photos/:filename` | magang:kelola | NF-06 | ✅ |
 | `GET /logbooks/today` · `PUT /logbooks/today` | magang:absen | MG-04 | ✅ |
 | `GET /logbooks/me` | magang:absen | MG-04 | ✅ |
-| `GET /logbooks` | magang:kelola | MG-09 | ⏳ |
+| `GET /logbooks` | magang:kelola | MG-09 | ✅ |
 | `GET /tasks/me` | magang:absen | MG-08 | ✅ |
 | `PATCH /tasks/:id/progress` | magang:absen | MG-07 | ✅ |
 | `GET /tasks` · `POST /tasks` | magang:kelola | MG-06 | ✅ |

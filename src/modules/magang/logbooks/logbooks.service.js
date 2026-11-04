@@ -1,7 +1,7 @@
 const prisma = require('../../../config/prisma');
 const internsService = require('../interns/interns.service');
 const { hariIni, keTanggalDb, dariTanggalDb } = require('../../../shared/utils/date');
-const { AppError, notImplemented } = require('../../../shared/utils/AppError');
+const { AppError } = require('../../../shared/utils/AppError');
 
 const formatLogbook = (logbook) => ({ ...logbook, tanggal: dariTanggalDb(logbook.tanggal) });
 
@@ -53,8 +53,25 @@ async function riwayatSaya(userId, { dari, sampai } = {}) {
 
 // MG-09: semua logbook, filter intern_id dan periode
 async function list(filter) {
-  // TODO MG-09
-  throw notImplemented('MG-09');
+  const { dari, sampai, intern_id } = filter;
+  const logbooks = await prisma.mgLogbook.findMany({
+    where: {
+      ...(intern_id && { intern_id }),
+      ...((dari || sampai) && {
+        tanggal: {
+          ...(dari && { gte: keTanggalDb(dari) }),
+          ...(sampai && { lte: keTanggalDb(sampai) }),
+        },
+      }),
+    },
+    include: { intern: { select: { user: { select: { nama: true, email: true } } } } },
+    orderBy: [{ tanggal: 'desc' }, { intern_id: 'asc' }, { id: 'desc' }],
+  });
+  return logbooks.map(({ intern, ...logbook }) => ({
+    ...formatLogbook(logbook),
+    nama_anak_magang: intern.user.nama,
+    email_anak_magang: intern.user.email,
+  }));
 }
 
 module.exports = { getHariIni, simpanHariIni, riwayatSaya, list };
