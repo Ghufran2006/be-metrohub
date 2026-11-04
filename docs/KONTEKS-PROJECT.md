@@ -84,8 +84,8 @@ Prefix semua endpoint: `/api/v1`. Status: ✅ sudah berjalan, ⏳ masih `TODO` (
 | `GET /attendances` (rekap) | magang:kelola | MG-09 | ⏳ |
 | `PATCH /attendances/:id` (koreksi) | magang:kelola | MG-10 | ⏳ |
 | `GET /attendances/photos/:filename` | magang:kelola | NF-06 | ✅ |
-| `GET /logbooks/today` · `PUT /logbooks/today` | magang:absen | MG-04 | ⏳ |
-| `GET /logbooks/me` | magang:absen | MG-04 | ⏳ |
+| `GET /logbooks/today` · `PUT /logbooks/today` | magang:absen | MG-04 | ✅ |
+| `GET /logbooks/me` | magang:absen | MG-04 | ✅ |
 | `GET /logbooks` | magang:kelola | MG-09 | ⏳ |
 | `GET /tasks/me` | magang:absen | MG-08 | ⏳ |
 | `PATCH /tasks/:id/progress` | magang:absen | MG-07 | ⏳ |
