@@ -10,110 +10,131 @@ const { AppError, notImplemented } = require('../../../shared/utils/AppError');
 const FOTO_DIR = 'attendances'; // subfolder di dalam UPLOAD_DIR
 const FOTO_ROOT = path.resolve(env.UPLOAD_DIR, FOTO_DIR);
 
-const attendanceSelect = {
-  id: true,
-  intern_id: true,
-  tanggal: true,
-  jam_checkin: true,
-  foto_checkin: true,
-  lat_checkin: true,
-  lng_checkin: true,
-  jarak_checkin_meter: true,
-  jam_checkout: true,
-  foto_checkout: true,
-  lat_checkout: true,
-  lng_checkout: true,
-  jarak_checkout_meter: true,
-  keterangan_koreksi: true,
-  dikoreksi_oleh: true,
-};
+const desimal = (nilai) => (nilai === null ? null : Number(nilai));
 
-function toAttendanceResponse(attendance) {
-  if (!attendance) return null;
+function formatAbsensi(a) {
   return {
-    ...attendance,
-    tanggal: dariTanggalDb(attendance.tanggal),
-    lat_checkin: Number(attendance.lat_checkin),
-    lng_checkin: Number(attendance.lng_checkin),
-    lat_checkout: attendance.lat_checkout === null ? null : Number(attendance.lat_checkout),
-    lng_checkout: attendance.lng_checkout === null ? null : Number(attendance.lng_checkout),
+    ...a,
+    tanggal: dariTanggalDb(a.tanggal),
+    lat_checkin: desimal(a.lat_checkin),
+    lng_checkin: desimal(a.lng_checkin),
+    lat_checkout: desimal(a.lat_checkout),
+    lng_checkout: desimal(a.lng_checkout),
   };
 }
+
+// BR-07: absensi hanya dalam masa magang (data lama tetap tersimpan untuk rekap)
+function cekMasaMagang(intern) {
+  const hari = hariIni();
+  if (hari < dariTanggalDb(intern.tanggal_mulai)) throw new AppError(400, 'Masa magang Anda belum dimulai');
+  if (hari > dariTanggalDb(intern.tanggal_selesai)) throw new AppError(400, 'Masa magang Anda sudah berakhir');
+}
+
+// BR-01 & BR-02: jarak selalu dihitung dan dicatat; on-site ditolak jika di luar radius
+async function hitungJarak(intern, latitude, longitude) {
+  const kantor = await officeSettingsService.get();
+  const jarak = hitungJarakMeter(latitude, longitude, kantor.latitude, kantor.longitude);
+  if (intern.status_kerja === 'ONSITE' && jarak > kantor.radius_meter) {
+    throw new AppError(
+      400,
+      `Anda berada ${jarak} meter dari kantor. Absensi on-site hanya bisa dalam radius ${kantor.radius_meter} meter.`,
+    );
+  }
+  return jarak;
+}
+
+function cekFoto(foto) {
+  if (!foto) throw new AppError(400, 'Foto wajah wajib diambil'); // BR-03
+}
+
+const absensiHariIni = (internId) =>
+  prisma.mgAttendance.findUnique({
+    where: { intern_id_tanggal: { intern_id: internId, tanggal: keTanggalDb(hariIni()) } },
+  });
 
 // Status absensi hari ini untuk mengunci/membuka tombol di frontend:
 // sudah check-in? logbook tersimpan? sudah check-out?
 async function getHariIni(userId) {
   const intern = await internsService.getByUserId(userId);
-  const tanggal = keTanggalDb(hariIni());
-
-  const [attendance, logbook] = await Promise.all([
-    prisma.mgAttendance.findUnique({
-      where: { intern_id_tanggal: { intern_id: intern.id, tanggal } },
-      select: attendanceSelect,
-    }),
+  const hari = hariIni();
+  const [absensi, logbook] = await Promise.all([
+    absensiHariIni(intern.id),
     prisma.mgLogbook.findUnique({
-      where: { intern_id_tanggal: { intern_id: intern.id, tanggal } },
+      where: { intern_id_tanggal: { intern_id: intern.id, tanggal: keTanggalDb(hari) } },
       select: { id: true },
     }),
   ]);
+  const dalamMasaMagang =
+    dariTanggalDb(intern.tanggal_mulai) <= hari && hari <= dariTanggalDb(intern.tanggal_selesai);
+
+  const sudahCheckin = Boolean(absensi);
+  const sudahCheckout = Boolean(absensi?.jam_checkout);
+  const logbookTersimpan = Boolean(logbook);
 
   return {
-    sudah_checkin: Boolean(attendance),
-    logbook_tersimpan: Boolean(logbook),
-    sudah_checkout: Boolean(attendance?.jam_checkout),
-    attendance: toAttendanceResponse(attendance),
+    tanggal: hari,
+    status_kerja: intern.status_kerja,
+    dalam_masa_magang: dalamMasaMagang,
+    sudah_checkin: sudahCheckin,
+    logbook_tersimpan: logbookTersimpan,
+    sudah_checkout: sudahCheckout,
+    bisa_checkin: dalamMasaMagang && !sudahCheckin,
+    bisa_checkout: dalamMasaMagang && sudahCheckin && logbookTersimpan && !sudahCheckout,
+    absensi: absensi && formatAbsensi(absensi),
   };
 }
 
 // MG-03. foto = req.file dari multer (nama file yang disimpan ke DB: foto.filename)
 async function checkIn(userId, { latitude, longitude }, foto) {
-  if (!foto?.filename) throw new AppError(400, 'Foto check-in wajib diunggah');
-
+  cekFoto(foto);
   const intern = await internsService.getByUserId(userId);
-  const tanggalHariIni = hariIni();
-  if (dariTanggalDb(intern.tanggal_selesai) < tanggalHariIni) {
-    throw new AppError(400, 'Masa magang sudah berakhir, check-in tidak dapat dilakukan');
-  }
+  cekMasaMagang(intern);
+  if (await absensiHariIni(intern.id)) throw new AppError(409, 'Anda sudah check-in hari ini'); // BR-04
+  const jarak = await hitungJarak(intern, latitude, longitude);
 
-  const tanggal = keTanggalDb(tanggalHariIni);
-  const attendanceHariIni = await prisma.mgAttendance.findUnique({
-    where: { intern_id_tanggal: { intern_id: intern.id, tanggal } },
-    select: { id: true },
-  });
-  if (attendanceHariIni) throw new AppError(409, 'Anda sudah melakukan check-in hari ini');
-
-  let jarakCheckinMeter = null;
-  if (intern.status_kerja === 'ONSITE') {
-    const kantor = await officeSettingsService.get();
-    jarakCheckinMeter = hitungJarakMeter(latitude, longitude, kantor.latitude, kantor.longitude);
-    if (jarakCheckinMeter > kantor.radius_meter) {
-      throw new AppError(
-        400,
-        `Check-in ditolak: jarak Anda ${jarakCheckinMeter} meter dari kantor, melebihi radius ${kantor.radius_meter} meter`,
-      );
-    }
-  }
-
-  const attendance = await prisma.mgAttendance.create({
+  const absensi = await prisma.mgAttendance.create({
     data: {
       intern_id: intern.id,
-      tanggal,
+      tanggal: keTanggalDb(hariIni()),
       jam_checkin: new Date(),
       foto_checkin: foto.filename,
       lat_checkin: latitude,
       lng_checkin: longitude,
-      jarak_checkin_meter: jarakCheckinMeter,
+      jarak_checkin_meter: jarak,
     },
-    select: attendanceSelect,
   });
-  return toAttendanceResponse(attendance);
+  return formatAbsensi(absensi);
 }
 
 // MG-05
 async function checkOut(userId, { latitude, longitude }, foto) {
-  // TODO MG-05: sudah check-in, belum check-out (BR-04),
-  // logbook hari ini sudah tersimpan (BR-05), radius sama dengan check-in (BR-01)
-  throw notImplemented('MG-05');
+  cekFoto(foto);
+  const intern = await internsService.getByUserId(userId);
+  cekMasaMagang(intern);
+
+  const absensi = await absensiHariIni(intern.id);
+  if (!absensi) throw new AppError(400, 'Anda belum check-in hari ini'); // BR-05
+  if (absensi.jam_checkout) throw new AppError(409, 'Anda sudah check-out hari ini'); // BR-04
+
+  const logbook = await prisma.mgLogbook.findUnique({
+    where: { intern_id_tanggal: { intern_id: intern.id, tanggal: absensi.tanggal } },
+    select: { id: true },
+  });
+  if (!logbook) throw new AppError(400, 'Isi logbook hari ini sebelum check-out'); // BR-05
+
+  const jarak = await hitungJarak(intern, latitude, longitude);
+
+  const hasil = await prisma.mgAttendance.update({
+    where: { id: absensi.id },
+    data: {
+      jam_checkout: new Date(),
+      foto_checkout: foto.filename,
+      lat_checkout: latitude,
+      lng_checkout: longitude,
+      jarak_checkout_meter: jarak,
+    },
+  });
+  return formatAbsensi(hasil);
 }
 
 async function riwayatSaya(userId, periode) {

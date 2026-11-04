@@ -3,72 +3,52 @@ const internsService = require('../interns/interns.service');
 const { hariIni, keTanggalDb, dariTanggalDb } = require('../../../shared/utils/date');
 const { AppError, notImplemented } = require('../../../shared/utils/AppError');
 
-function toLogbookResponse(logbook) {
-  if (!logbook) return null;
-  return { ...logbook, tanggal: dariTanggalDb(logbook.tanggal) };
-}
+const formatLogbook = (logbook) => ({ ...logbook, tanggal: dariTanggalDb(logbook.tanggal) });
 
+// MG-04: logbook hari ini milik pengguna (null jika belum ada)
 async function getHariIni(userId) {
   const intern = await internsService.getByUserId(userId);
   const logbook = await prisma.mgLogbook.findUnique({
-    where: {
-      intern_id_tanggal: {
-        intern_id: intern.id,
-        tanggal: keTanggalDb(hariIni()),
-      },
-    },
+    where: { intern_id_tanggal: { intern_id: intern.id, tanggal: keTanggalDb(hariIni()) } },
   });
-  return toLogbookResponse(logbook);
+  return logbook ? formatLogbook(logbook) : null;
 }
 
 // MG-04: upsert berdasarkan (intern_id, tanggal hari ini)
 async function simpanHariIni(userId, isi) {
   const intern = await internsService.getByUserId(userId);
-  const tanggalHariIni = keTanggalDb(hariIni());
-  const attendance = await prisma.mgAttendance.findUnique({
-    where: {
-      intern_id_tanggal: {
-        intern_id: intern.id,
-        tanggal: tanggalHariIni,
-      },
-    },
+  const tanggal = keTanggalDb(hariIni());
+
+  const absensi = await prisma.mgAttendance.findUnique({
+    where: { intern_id_tanggal: { intern_id: intern.id, tanggal } },
     select: { jam_checkout: true },
   });
-
-  if (!attendance) throw new AppError(409, 'Logbook hanya dapat disimpan setelah check-in hari ini');
-  if (attendance.jam_checkout) throw new AppError(409, 'Logbook tidak dapat diubah setelah check-out');
+  if (!absensi) throw new AppError(400, 'Lakukan check-in terlebih dahulu sebelum mengisi logbook');
+  if (absensi.jam_checkout) throw new AppError(400, 'Logbook tidak bisa diubah setelah check-out');
 
   const logbook = await prisma.mgLogbook.upsert({
-    where: {
-      intern_id_tanggal: {
-        intern_id: intern.id,
-        tanggal: tanggalHariIni,
-      },
-    },
-    create: {
-      intern_id: intern.id,
-      tanggal: tanggalHariIni,
-      isi,
-    },
+    where: { intern_id_tanggal: { intern_id: intern.id, tanggal } },
+    create: { intern_id: intern.id, tanggal, isi },
     update: { isi },
   });
-  return toLogbookResponse(logbook);
+  return formatLogbook(logbook);
 }
 
-async function riwayatSaya(userId, periode) {
+async function riwayatSaya(userId, { dari, sampai } = {}) {
   const intern = await internsService.getByUserId(userId);
-  const tanggal = {};
-  if (periode.dari) tanggal.gte = keTanggalDb(periode.dari);
-  if (periode.sampai) tanggal.lte = keTanggalDb(periode.sampai);
-
   const logbooks = await prisma.mgLogbook.findMany({
     where: {
       intern_id: intern.id,
-      ...(Object.keys(tanggal).length > 0 && { tanggal }),
+      ...((dari || sampai) && {
+        tanggal: {
+          ...(dari && { gte: keTanggalDb(dari) }),
+          ...(sampai && { lte: keTanggalDb(sampai) }),
+        },
+      }),
     },
     orderBy: [{ tanggal: 'desc' }, { id: 'desc' }],
   });
-  return logbooks.map(toLogbookResponse);
+  return logbooks.map(formatLogbook);
 }
 
 // MG-09: semua logbook, filter intern_id dan periode

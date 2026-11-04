@@ -20,6 +20,11 @@ npm run dev
 
 Cek: `GET http://localhost:3000/api/v1/health`
 
+Dokumentasi API (Swagger UI): `http://localhost:3000/api/v1/docs`
+(spesifikasi OpenAPI mentah: `/api/v1/docs.json`). Login lewat `POST /auth/login` di halaman itu,
+cookie tersimpan otomatis untuk request berikutnya. Spesifikasinya ada di `src/docs/openapi.js`:
+skema request dibaca dari schema Zod, skema respons ditulis manual.
+
 Frontend (Vite) sebaiknya memakai proxy `/api` → `http://localhost:3000` di `vite.config.js`,
 agar cookie login berjalan seperti di production (satu origin).
 

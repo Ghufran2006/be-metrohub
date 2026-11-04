@@ -4,12 +4,14 @@ const express = require('express');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const { z } = require('zod');
+const swaggerUi = require('swagger-ui-express');
 
 const coreRouter = require('./core');
 const modules = require('./modules');
 const forceHttps = require('./shared/middlewares/forceHttps');
 const notFound = require('./shared/middlewares/notFound');
 const errorHandler = require('./shared/middlewares/errorHandler');
+const openapi = require('./docs/openapi');
 
 // Pesan error validasi bawaan Zod dalam Bahasa Indonesia
 z.config(z.locales.id());
@@ -33,6 +35,9 @@ app.use(cookieParser());
 const api = express.Router();
 
 api.get('/health', (req, res) => res.json({ success: true, message: 'OK' }));
+// Dokumentasi API (Swagger UI) dan spesifikasi OpenAPI mentah
+api.get('/docs.json', (req, res) => res.json(openapi));
+api.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi, { customSiteTitle: 'MetroHub API Docs' }));
 api.use(coreRouter);
 for (const mod of modules) {
   api.use(mod.basePath, mod.router);

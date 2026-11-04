@@ -1,34 +1,104 @@
+const bcrypt = require('bcryptjs');
 const prisma = require('../../config/prisma');
-const { notImplemented } = require('../../shared/utils/AppError');
+const { AppError } = require('../../shared/utils/AppError');
 
 // Service ini juga dipakai modul lain (misalnya Magang saat MG-01 membuat akun anak magang).
 // Jangan pernah mengembalikan password_hash ke luar service.
 
-async function list(filter) {
-  // TODO CR-02: daftar pengguna + nama role, filter q (nama/email), role_id, aktif
-  throw notImplemented('CR-02');
+const SALT_ROUNDS = 10;
+
+const userSelect = {
+  id: true,
+  nama: true,
+  email: true,
+  role_id: true,
+  aktif: true,
+  created_at: true,
+  updated_at: true,
+  role: { select: { nama: true } },
+};
+
+function formatUser({ role, ...user }) {
+  return { ...user, role: role.nama };
 }
 
-async function getById(id) {
-  // TODO CR-02
-  throw notImplemented('CR-02');
+async function pastikanEmailUnik(email, kecualiId, tx) {
+  const pemilik = await tx.coreUser.findUnique({ where: { email }, select: { id: true } });
+  if (pemilik && pemilik.id !== kecualiId) throw new AppError(409, 'Email sudah dipakai akun lain');
+}
+
+async function pastikanRoleAda(roleId, tx) {
+  const role = await tx.coreRole.findUnique({ where: { id: roleId }, select: { id: true } });
+  if (!role) throw new AppError(400, 'Role tidak ditemukan');
+}
+
+// CR-02: daftar pengguna + nama role, filter q (nama/email), role_id, aktif
+async function list({ q, role_id, aktif } = {}) {
+  const users = await prisma.coreUser.findMany({
+    where: {
+      ...(q && { OR: [{ nama: { contains: q } }, { email: { contains: q } }] }),
+      ...(role_id && { role_id }),
+      ...(aktif !== undefined && { aktif }),
+    },
+    select: userSelect,
+    orderBy: { nama: 'asc' },
+  });
+  return users.map(formatUser);
+}
+
+async function getById(id, tx = prisma) {
+  const user = await tx.coreUser.findUnique({ where: { id }, select: userSelect });
+  if (!user) throw new AppError(404, 'Pengguna tidak ditemukan');
+  return formatUser(user);
+}
+
+// Dipakai modul lain yang perlu membuat akun dengan role bawaan (misalnya Anak Magang)
+async function getRoleIdByNama(nama, tx = prisma) {
+  const role = await tx.coreRole.findUnique({ where: { nama }, select: { id: true } });
+  if (!role) throw new AppError(500, `Role "${nama}" belum ada, jalankan seed`);
+  return role.id;
 }
 
 // Parameter tx opsional agar bisa dipanggil di dalam prisma.$transaction milik modul lain
-async function create(data, tx = prisma) {
-  // TODO CR-02: email unik (error P2002 sudah dipetakan ke 409 oleh errorHandler),
-  // hash password dengan bcrypt sebelum disimpan (NF-04)
-  throw notImplemented('CR-02');
+async function create({ nama, email, password, role_id }, tx = prisma) {
+  await pastikanEmailUnik(email, null, tx);
+  await pastikanRoleAda(role_id, tx);
+
+  const user = await tx.coreUser.create({
+    data: {
+      nama,
+      email,
+      role_id,
+      // NF-04: password disimpan sebagai hash bcrypt
+      password_hash: await bcrypt.hash(password, SALT_ROUNDS),
+    },
+    select: userSelect,
+  });
+  return formatUser(user);
 }
 
-async function update(id, data) {
-  // TODO CR-02: jika password diisi, hash ulang
-  throw notImplemented('CR-02');
+async function update(id, { password, ...data }, tx = prisma) {
+  await getById(id, tx);
+  if (data.email) await pastikanEmailUnik(data.email, id, tx);
+  if (data.role_id) await pastikanRoleAda(data.role_id, tx);
+
+  const user = await tx.coreUser.update({
+    where: { id },
+    data: {
+      ...data,
+      ...(password && { password_hash: await bcrypt.hash(password, SALT_ROUNDS) }),
+    },
+    select: userSelect,
+  });
+  return formatUser(user);
 }
 
-async function setStatus(id, aktif) {
-  // TODO CR-02: akun nonaktif tidak bisa login (sudah dicek di auth.service & authenticate)
-  throw notImplemented('CR-02');
+// Akun nonaktif tidak bisa login (dicek di auth.service & authenticate)
+async function setStatus(id, aktif, penggunaId) {
+  if (id === penggunaId && !aktif) throw new AppError(400, 'Anda tidak bisa menonaktifkan akun sendiri');
+  await getById(id);
+  const user = await prisma.coreUser.update({ where: { id }, data: { aktif }, select: userSelect });
+  return formatUser(user);
 }
 
-module.exports = { list, getById, create, update, setStatus };
+module.exports = { list, getById, getRoleIdByNama, create, update, setStatus };
