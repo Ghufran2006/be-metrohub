@@ -3,6 +3,8 @@ const env = require('../../../config/env');
 const prisma = require('../../../config/prisma');
 const internsService = require('../interns/interns.service');
 const officeSettingsService = require('../../../core/office-settings/officeSettings.service');
+const usersService = require('../../../core/users/users.service');
+const { lockHari } = require('./attendanceLock');
 const { hitungJarakMeter } = require('../../../shared/utils/geo');
 const { hariIni, keTanggalDb, dariTanggalDb } = require('../../../shared/utils/date');
 const { AppError } = require('../../../shared/utils/AppError');
@@ -20,7 +22,14 @@ function formatAbsensi(a) {
     lng_checkin: desimal(a.lng_checkin),
     lat_checkout: desimal(a.lat_checkout),
     lng_checkout: desimal(a.lng_checkout),
+    nama_admin_koreksi: null,
   };
+}
+
+async function denganNamaPengoreksi(rows) {
+  const users = await usersService.getNamesByIds(rows.map((row) => row.dikoreksi_oleh));
+  const names = new Map(users.map((user) => [user.id, user.nama]));
+  return rows.map((row) => ({ ...row, nama_admin_koreksi: names.get(row.dikoreksi_oleh) ?? null }));
 }
 
 function formatRekapAbsensi(attendance) {
@@ -119,27 +128,23 @@ async function checkOut(userId, { latitude, longitude }, foto) {
   const intern = await internsService.getByUserId(userId);
   cekMasaMagang(intern);
 
-  const absensi = await absensiHariIni(intern.id);
-  if (!absensi) throw new AppError(400, 'Anda belum check-in hari ini'); // BR-05
-  if (absensi.jam_checkout) throw new AppError(409, 'Anda sudah check-out hari ini'); // BR-04
-
-  const logbook = await prisma.mgLogbook.findUnique({
-    where: { intern_id_tanggal: { intern_id: intern.id, tanggal: absensi.tanggal } },
-    select: { id: true },
-  });
-  if (!logbook) throw new AppError(400, 'Isi logbook hari ini sebelum check-out'); // BR-05
-
+  const tanggal = keTanggalDb(hariIni());
   const jarak = await hitungJarak(intern, latitude, longitude);
-
-  const hasil = await prisma.mgAttendance.update({
-    where: { id: absensi.id },
-    data: {
-      jam_checkout: new Date(),
-      foto_checkout: foto.filename,
-      lat_checkout: latitude,
-      lng_checkout: longitude,
-      jarak_checkout_meter: jarak,
-    },
+  const hasil = await prisma.$transaction(async (tx) => {
+    await lockHari(tx, intern.id, tanggal);
+    const absensi = await tx.mgAttendance.findUnique({
+      where: { intern_id_tanggal: { intern_id: intern.id, tanggal } },
+    });
+    if (!absensi) throw new AppError(400, 'Anda belum check-in hari ini');
+    if (absensi.jam_checkout) throw new AppError(409, 'Anda sudah check-out hari ini');
+    const logbook = await tx.mgLogbook.findUnique({
+      where: { intern_id_tanggal: { intern_id: intern.id, tanggal } }, select: { id: true },
+    });
+    if (!logbook) throw new AppError(400, 'Isi logbook hari ini sebelum check-out');
+    return tx.mgAttendance.update({
+      where: { id: absensi.id },
+      data: { jam_checkout: new Date(), foto_checkout: foto.filename, lat_checkout: latitude, lng_checkout: longitude, jarak_checkout_meter: jarak },
+    });
   });
   return formatAbsensi(hasil);
 }
@@ -159,7 +164,7 @@ async function riwayatSaya(userId, periode) {
     },
     orderBy: [{ tanggal: 'desc' }, { id: 'desc' }],
   });
-  return attendances.map(formatRekapAbsensi);
+  return denganNamaPengoreksi(attendances.map(formatRekapAbsensi));
 }
 
 // MG-09: jam, foto, lokasi; hari tanpa check-out ditandai (jam_checkout null & tanggal < hari ini)
@@ -178,41 +183,44 @@ async function rekap(filter) {
     include: { intern: { select: { user: { select: { nama: true, email: true } } } } },
     orderBy: [{ tanggal: 'desc' }, { intern_id: 'asc' }, { id: 'desc' }],
   });
-  return attendances.map(({ intern, ...attendance }) => ({
+  return denganNamaPengoreksi(attendances.map(({ intern, ...attendance }) => ({
     ...formatRekapAbsensi(attendance),
     nama_anak_magang: intern.user.nama,
     email_anak_magang: intern.user.email,
-  }));
+  })));
 }
 
 // MG-10: simpan keterangan_koreksi dan dikoreksi_oleh = adminId
 async function koreksi(id, data, adminId) {
-  const attendance = await prisma.mgAttendance.findUnique({ where: { id } });
-  if (!attendance) throw new AppError(404, 'Data absensi tidak ditemukan');
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM mg_attendances WHERE id = ${id} FOR UPDATE`;
+    const attendance = await tx.mgAttendance.findUnique({ where: { id } });
+    if (!attendance) throw new AppError(404, 'Data absensi tidak ditemukan');
 
-  const jamCheckin = data.jam_checkin ? new Date(data.jam_checkin) : attendance.jam_checkin;
-  const jamCheckout =
-    data.jam_checkout === undefined
-      ? attendance.jam_checkout
-      : data.jam_checkout === null
-        ? null
-        : new Date(data.jam_checkout);
-  if (jamCheckout && jamCheckout < jamCheckin) {
-    throw new AppError(400, 'Jam check-out tidak boleh sebelum jam check-in');
-  }
+    const jamCheckin = data.jam_checkin ? new Date(data.jam_checkin) : attendance.jam_checkin;
+    const jamCheckout =
+      data.jam_checkout === undefined
+        ? attendance.jam_checkout
+        : data.jam_checkout === null
+          ? null
+          : new Date(data.jam_checkout);
+    if (jamCheckout && jamCheckout < jamCheckin) {
+      throw new AppError(400, 'Jam check-out tidak boleh sebelum jam check-in');
+    }
 
-  const updated = await prisma.mgAttendance.update({
-    where: { id },
-    data: {
-      ...(data.jam_checkin && { jam_checkin: new Date(data.jam_checkin) }),
-      ...(data.jam_checkout !== undefined && {
-        jam_checkout: data.jam_checkout === null ? null : new Date(data.jam_checkout),
-      }),
-      keterangan_koreksi: data.keterangan_koreksi,
-      dikoreksi_oleh: adminId,
-    },
+    return tx.mgAttendance.update({
+      where: { id },
+      data: {
+        ...(data.jam_checkin && { jam_checkin: new Date(data.jam_checkin) }),
+        ...(data.jam_checkout !== undefined && {
+          jam_checkout: data.jam_checkout === null ? null : new Date(data.jam_checkout),
+        }),
+        keterangan_koreksi: data.keterangan_koreksi,
+        dikoreksi_oleh: adminId,
+      },
+    });
   });
-  return formatAbsensi(updated);
+  return (await denganNamaPengoreksi([formatAbsensi(updated)]))[0];
 }
 
 // NF-06: foto hanya bisa diakses lewat endpoint admin ini, bukan static file

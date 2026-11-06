@@ -32,8 +32,22 @@ model CoreUser {
   // Back-relation yang diwajibkan Prisma untuk mg_interns.user_id.
   // Ini satu-satunya relasi lintas modul; core tidak boleh memakainya untuk query data magang.
   intern MgIntern?
+  sessions CoreSession[]
 
   @@map("core_users")
+}
+
+// Sesi persisten agar logout membatalkan JWT juga setelah server restart.
+model CoreSession {
+  id         String   @id @db.Char(36)
+  user_id    Int
+  created_at DateTime @default(now())
+  expires_at DateTime
+  user       CoreUser @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([expires_at])
+  @@map("core_sessions")
 }
 
 // Hanya berisi satu baris (id = 1).

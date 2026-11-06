@@ -1,0 +1,15 @@
+services:
+  mysql-test:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: metrohub-test-only
+      MYSQL_DATABASE: metrohub_test_local
+    ports:
+      - "127.0.0.1:3307:3306"
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-pmetrohub-test-only"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

@@ -39,7 +39,18 @@ const jsonSchema = (schema) => bersihkan(z.toJSONSchema(schema, { io: 'input', u
 
 // Ubah schema Zod object (query/params) menjadi daftar parameter OpenAPI
 function parameters(schema, lokasi) {
-  const { properties = {}, required = [] } = jsonSchema(schema);
+  // Zod intersection memakai allOf; parameter periode harus tetap muncul di Swagger.
+  function fields(node) {
+    const properties = { ...node.properties };
+    const required = new Set(node.required ?? []);
+    for (const part of node.allOf ?? []) {
+      const child = fields(part);
+      Object.assign(properties, child.properties);
+      for (const key of child.required) required.add(key);
+    }
+    return { properties, required: [...required] };
+  }
+  const { properties, required } = fields(jsonSchema(schema));
   return Object.entries(properties).map(([name, s]) => ({
     name,
     in: lokasi,
@@ -143,6 +154,7 @@ const schemas = {
     jarak_checkout_meter: nullable(int),
     keterangan_koreksi: nullable(str),
     dikoreksi_oleh: nullable(int),
+    nama_admin_koreksi: nullable(str),
   }),
   StatusHariIni: obj({
     tanggal: tgl,
@@ -155,6 +167,8 @@ const schemas = {
     bisa_checkout: { ...bool, description: 'Untuk membuka tombol check-out (BR-05)' },
     absensi: { oneOf: [ref('Attendance'), { type: 'null' }] },
   }),
+  AttendanceRecap: { allOf: [ref('Attendance'), obj({ checkout_terlambat: bool, nama_anak_magang: str, email_anak_magang: str })] },
+  LogbookRecap: { allOf: [ref('Logbook'), obj({ nama_anak_magang: str, email_anak_magang: str })] },
   Logbook: obj({ id: int, intern_id: int, tanggal: tgl, isi: str, updated_at: waktu }),
   Task: obj({
     id: int,
@@ -184,6 +198,15 @@ const schemas = {
     updated_at: waktu,
     deleted_at: nullable(waktu),
   }),
+  Ledger: obj({
+    saldo_awal: num, total_pemasukan: num, total_pengeluaran: num, saldo_akhir: num,
+    transaksi: { type: 'array', items: { allOf: [ref('Transaction'), obj({ debit: num, kredit: num, saldo: num })] } },
+  }),
+  FinancialSummary: obj({
+    bulan: { type: 'string', example: '2026-11' },
+    total_pemasukan: num, total_pengeluaran: num, saldo: num,
+    per_kategori: { type: 'array', items: obj({ category_id: int, kategori: str, jenis: { type: 'string', enum: ['PEMASUKAN', 'PENGELUARAN'] }, total: num, jumlah_transaksi: int }) },
+  }),
 };
 
 // ===== Respons =====
@@ -194,7 +217,6 @@ const PESAN_ERROR = {
   404: 'Data tidak ditemukan',
   409: 'Data duplikat atau masih dipakai data lain',
   413: 'Foto lebih dari 500 KB',
-  501: 'Endpoint belum diimplementasikan',
 };
 
 function sukses(data, message) {
@@ -228,7 +250,6 @@ function route(method, path, opsi) {
     kode,
     permission,
     publik = false,
-    belum = false,
     params,
     query,
     body,
@@ -245,7 +266,6 @@ function route(method, path, opsi) {
     permission && `**Permission:** \`${permission}\``,
     publik && '**Publik** (tanpa login)',
     !publik && !permission && '**Login** (semua role)',
-    belum && '> ⏳ **Belum diimplementasikan**, saat ini mengembalikan 501.',
     description,
   ]
     .filter(Boolean)
@@ -258,7 +278,6 @@ function route(method, path, opsi) {
   for (const [kodeStatus, ket] of Object.entries(errors)) {
     if (kodeStatus !== '400') responses[kodeStatus] = error(Number(kodeStatus), ket);
   }
-  if (belum) responses[501] = error(501);
 
   // Contoh: PATCH /magang/interns/:id/status-kerja -> patchMagangInternsIdStatusKerja
   const operationId = [method, ...path.split(/[/:-]/)]
@@ -269,7 +288,7 @@ function route(method, path, opsi) {
   const operasi = {
     operationId,
     tags: [tag],
-    summary: belum ? `⏳ ${summary}` : summary,
+    summary,
     description: keterangan,
     parameters: [...(params ? parameters(params, 'path') : []), ...(query ? parameters(query, 'query') : [])],
     ...(publik && { security: [] }),
@@ -318,15 +337,15 @@ route('post', '/auth/login', {
   description: 'Token disimpan di cookie httpOnly `token`. Pesan gagal tidak menyebut bagian mana yang salah.',
   errors: { 401: 'Email/password salah atau akun nonaktif' },
 });
-route('post', '/auth/logout', { tag: 'Auth', summary: 'Logout', kode: 'CR-01', publik: true, message: 'Logout berhasil' });
+route('post', '/auth/logout', { tag: 'Auth', summary: 'Logout', kode: 'CR-01', publik: true, message: 'Logout berhasil', description: 'Mencabut sesi token dari cookie atau Bearer header di server. Pemanggilan berulang tetap berhasil. Sesi perangkat lain tetap aktif.' });
 route('get', '/auth/me', { tag: 'Auth', summary: 'Pengguna yang sedang login', kode: 'CR-01', data: ref('Me') });
 route('patch', '/auth/password', {
   tag: 'Auth',
   summary: 'Ubah password sendiri',
   kode: 'Profil',
-  belum: true,
   body: authSchema.ubahPasswordSchema,
-  message: 'Password berhasil diubah',
+  description: 'Memeriksa password lama, mengganti hash bcrypt, lalu mencabut seluruh sesi akun dan menghapus cookie. Setelah berhasil, login kembali.',
+  message: 'Password berhasil diubah. Silakan login kembali',
 });
 route('get', '/menu', { tag: 'Auth', summary: 'Menu sidebar sesuai permission', kode: 'CR-03', data: ref('Menu') });
 
@@ -560,25 +579,25 @@ route('get', '/magang/attendances/me', {
   summary: 'Riwayat absensi saya',
   kode: 'MG-09',
   permission: MAGANG.ABSEN,
-  belum: true,
   query: attendancesSchema.periodeQuery,
+  data: daftar('AttendanceRecap'),
 });
 route('get', '/magang/attendances', {
   tag: TAG_ABSEN,
   summary: 'Rekap absensi semua anak magang',
   kode: 'MG-09',
   permission: MAGANG.KELOLA,
-  belum: true,
   query: attendancesSchema.rekapQuery,
+  data: daftar('AttendanceRecap'),
 });
 route('patch', '/magang/attendances/:id', {
   tag: TAG_ABSEN,
   summary: 'Koreksi absensi',
   kode: 'MG-10',
   permission: MAGANG.KELOLA,
-  belum: true,
   params: idParam,
   body: attendancesSchema.koreksiSchema,
+  data: ref('Attendance'),
 });
 route('get', '/magang/attendances/photos/:filename', {
   tag: TAG_ABSEN,
@@ -627,8 +646,8 @@ route('get', '/magang/logbooks', {
   summary: 'Rekap logbook semua anak magang',
   kode: 'MG-09',
   permission: MAGANG.KELOLA,
-  belum: true,
   query: logbooksSchema.listQuery,
+  data: daftar('LogbookRecap'),
 });
 
 // ----- Magang: Tugas -----
@@ -741,8 +760,9 @@ route('get', '/keuangan/transactions', {
   summary: 'Tabel debit-kredit + saldo berjalan',
   kode: 'KU-04',
   permission: KEUANGAN.KELOLA,
-  belum: true,
   query: transactionsSchema.listQuery,
+  data: ref('Ledger'),
+  description: 'Pilih bulan atau rentang dari/sampai. Urut tanggal lalu id. Saldo awal berasal dari transaksi sebelum awal periode. Filter jenis/kategori berlaku juga pada saldo awal dan saldo berjalan. Semua perhitungan mengabaikan transaksi terhapus.',
 });
 route('post', '/keuangan/transactions', {
   tag: TAG_TRANSAKSI,
@@ -781,8 +801,9 @@ route('get', '/keuangan/summary', {
   summary: 'Ringkasan keuangan per bulan',
   kode: 'KU-05',
   permission: KEUANGAN.LIHAT,
-  belum: true,
   query: summarySchema.summaryQuery,
+  data: ref('FinancialSummary'),
+  description: 'Default bulan berjalan dalam WIB. Total dan rincian kategori mengabaikan transaksi soft delete; bulan kosong menghasilkan nol dan per_kategori kosong.',
 });
 
 module.exports = {
@@ -793,7 +814,7 @@ module.exports = {
     description:
       'REST API Sistem Informasi Manajemen Magang dan Keuangan Metro Software.\n\n' +
       'Cara mencoba: jalankan `POST /auth/login` di halaman ini, cookie `token` otomatis tersimpan ' +
-      'di browser lalu dipakai request berikutnya. Endpoint bertanda ⏳ belum diimplementasikan (501).\n\n' +
+      'di browser lalu dipakai request berikutnya. Logout mencabut sesi di server; ubah password mengakhiri semua sesi akun.\n\n' +
       'Semua respons memakai format `{ success, message, data }`; error memakai `{ success: false, message, details? }`.',
   },
   // Relatif terhadap halaman docs, jadi berlaku di lokal maupun production

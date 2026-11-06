@@ -2,6 +2,7 @@ const prisma = require('../../../config/prisma');
 const internsService = require('../interns/interns.service');
 const { hariIni, keTanggalDb, dariTanggalDb } = require('../../../shared/utils/date');
 const { AppError } = require('../../../shared/utils/AppError');
+const { lockHari } = require('../attendances/attendanceLock');
 
 const formatLogbook = (logbook) => ({ ...logbook, tanggal: dariTanggalDb(logbook.tanggal) });
 
@@ -19,17 +20,20 @@ async function simpanHariIni(userId, isi) {
   const intern = await internsService.getByUserId(userId);
   const tanggal = keTanggalDb(hariIni());
 
-  const absensi = await prisma.mgAttendance.findUnique({
-    where: { intern_id_tanggal: { intern_id: intern.id, tanggal } },
-    select: { jam_checkout: true },
-  });
-  if (!absensi) throw new AppError(400, 'Lakukan check-in terlebih dahulu sebelum mengisi logbook');
-  if (absensi.jam_checkout) throw new AppError(400, 'Logbook tidak bisa diubah setelah check-out');
+  const logbook = await prisma.$transaction(async (tx) => {
+    await lockHari(tx, intern.id, tanggal);
+    const absensi = await tx.mgAttendance.findUnique({
+      where: { intern_id_tanggal: { intern_id: intern.id, tanggal } },
+      select: { jam_checkout: true },
+    });
+    if (!absensi) throw new AppError(400, 'Lakukan check-in terlebih dahulu sebelum mengisi logbook');
+    if (absensi.jam_checkout) throw new AppError(400, 'Logbook tidak bisa diubah setelah check-out');
 
-  const logbook = await prisma.mgLogbook.upsert({
-    where: { intern_id_tanggal: { intern_id: intern.id, tanggal } },
-    create: { intern_id: intern.id, tanggal, isi },
-    update: { isi },
+    return tx.mgLogbook.upsert({
+      where: { intern_id_tanggal: { intern_id: intern.id, tanggal } },
+      create: { intern_id: intern.id, tanggal, isi },
+      update: { isi },
+    });
   });
   return formatLogbook(logbook);
 }

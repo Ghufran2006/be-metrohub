@@ -10,14 +10,16 @@ const listQuery = periodeQuery.and(
     jenis: jenis.optional(),
     category_id: z.coerce.number().int().positive().optional(),
   }),
-);
+).refine((q) => !q.bulan || (!q.dari && !q.sampai), {
+  message: 'Pilih filter bulan atau rentang tanggal', path: ['bulan'],
+});
 
 // KU-02, BR-11: nominal > 0. Kecocokan kategori dengan jenis dicek di service.
 const createSchema = z.object({
   tanggal,
   jenis,
   category_id: z.number().int().positive(),
-  nominal: z.number().positive('Nominal harus lebih dari 0').multipleOf(0.01),
+  nominal: z.number().positive('Nominal harus lebih dari 0').max(9999999999999.99).multipleOf(0.01),
   keterangan: z.string().trim().max(5000).optional(),
 });
 

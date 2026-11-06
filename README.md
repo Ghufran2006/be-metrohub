@@ -13,7 +13,7 @@ Baca dulu:
 cp .env.example .env          # lalu isi JWT_SECRET
 docker compose up -d          # MySQL 8 di localhost:3306
 npm install
-npm run db:migrate -- --name core_init   # migration pertama
+npm run db:deploy            # terapkan migration yang sudah ada di repo
 npm run db:seed               # role Admin & Anak Magang, akun admin, lokasi kantor
 npm run dev
 ```
@@ -83,10 +83,17 @@ Alur satu request: `routes` (authorize + validate) → `controller` (ambil input
 
 ## Status
 
-Sudah berjalan: konfigurasi, middleware, login/logout/me, menu sidebar per permission,
-dashboard (kartu ringkasan tiap modul), lokasi kantor, seed.
-Fitur lain sudah punya route, validasi Zod, dan service berisi `TODO <kode PRD>` yang
-saat ini mengembalikan 501.
+Core, seluruh MG-01 sampai MG-10, dan KU-01 sampai KU-05 memiliki implementasi backend.
+Buku transaksi mencakup saldo awal/debit/kredit/saldo berjalan; ringkasan bulanan memuat rincian per kategori.
+Logout mencabut sesi di server. Ubah/reset password serta nonaktivasi akun mencabut semua sesi akun.
+
+Tambahan `core_sessions` menjadikan database 11 tabel. Jalankan migrasi baru sebelum start;
+pengguna dari versi sebelumnya perlu login kembali. Lihat [perubahan database](docs/PERUBAHAN-DATABASE.md).
+
+- `npm test`: pengujian unit tanpa database.
+- `npm run test:integration`: pengujian HTTP dengan MySQL lokal khusus test.
+- [Panduan operasional](docs/OPERASIONAL.md): setup, kontrak respons keuangan, pengujian, dan backup harian.
+- [Hasil verifikasi](docs/HASIL-VERIFIKASI.md): hasil pengujian dan batas yang belum diverifikasi.
 
 ## Deployment
 

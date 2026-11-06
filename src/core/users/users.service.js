@@ -52,6 +52,14 @@ async function getById(id, tx = prisma) {
   return formatUser(user);
 }
 
+// Pembacaan identitas audit oleh modul tanpa query langsung ke tabel core.
+async function getNamesByIds(ids) {
+  const unik = [...new Set(ids.filter((id) => id != null))];
+  return unik.length ? prisma.coreUser.findMany({
+    where: { id: { in: unik } }, select: { id: true, nama: true },
+  }) : [];
+}
+
 // Dipakai modul lain yang perlu membuat akun dengan role bawaan (misalnya Anak Magang)
 async function getRoleIdByNama(nama, tx = prisma) {
   const role = await tx.coreRole.findUnique({ where: { nama }, select: { id: true } });
@@ -78,6 +86,7 @@ async function create({ nama, email, password, role_id }, tx = prisma) {
 }
 
 async function update(id, { password, ...data }, tx = prisma) {
+  if (tx === prisma) return prisma.$transaction((db) => update(id, { password, ...data }, db));
   await getById(id, tx);
   if (data.email) await pastikanEmailUnik(data.email, id, tx);
   if (data.role_id) await pastikanRoleAda(data.role_id, tx);
@@ -90,6 +99,7 @@ async function update(id, { password, ...data }, tx = prisma) {
     },
     select: userSelect,
   });
+  if (password) await tx.coreSession.deleteMany({ where: { user_id: id } });
   return formatUser(user);
 }
 
@@ -97,8 +107,12 @@ async function update(id, { password, ...data }, tx = prisma) {
 async function setStatus(id, aktif, penggunaId) {
   if (id === penggunaId && !aktif) throw new AppError(400, 'Anda tidak bisa menonaktifkan akun sendiri');
   await getById(id);
-  const user = await prisma.coreUser.update({ where: { id }, data: { aktif }, select: userSelect });
+  const user = await prisma.$transaction(async (tx) => {
+    const hasil = await tx.coreUser.update({ where: { id }, data: { aktif }, select: userSelect });
+    if (!aktif) await tx.coreSession.deleteMany({ where: { user_id: id } });
+    return hasil;
+  });
   return formatUser(user);
 }
 
-module.exports = { list, getById, getRoleIdByNama, create, update, setStatus };
+module.exports = { list, getById, getNamesByIds, getRoleIdByNama, create, update, setStatus };

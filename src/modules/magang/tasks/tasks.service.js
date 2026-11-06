@@ -51,7 +51,7 @@ async function listSaya(userId) {
     where: { intern_id: intern.id },
     orderBy: { tenggat: 'asc' },
   });
-  return tasks.map(denganTandaTerlambat);
+  return tasks.map(formatTugas);
 }
 
 // MG-06: tugas langsung muncul di halaman anak magang yang dituju

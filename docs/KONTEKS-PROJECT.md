@@ -49,7 +49,7 @@ Backend mengecek permission, bukan nama role. Jadi role baru di tahap berikutnya
 
 ## 4. Daftar Endpoint
 
-Prefix semua endpoint: `/api/v1`. Status: ✅ sudah berjalan, ⏳ masih `TODO` (mengembalikan 501).
+Prefix semua endpoint: `/api/v1`. Status: ✅ memiliki implementasi backend; hasil pengujian dicatat di docs/HASIL-VERIFIKASI.md.
 
 ### Core
 
@@ -58,7 +58,7 @@ Prefix semua endpoint: `/api/v1`. Status: ✅ sudah berjalan, ⏳ masih `TODO` (
 | `POST /auth/login` | publik | CR-01 | ✅ |
 | `POST /auth/logout` | publik | CR-01 | ✅ |
 | `GET /auth/me` | login | CR-01 | ✅ |
-| `PATCH /auth/password` | login | Profil | ⏳ |
+| `PATCH /auth/password` | login | Profil | ✅ |
 | `GET /users` · `POST /users` | core:pengguna | CR-02 | ✅ |
 | `GET /users/:id` · `PATCH /users/:id` | core:pengguna | CR-02 | ✅ |
 | `PATCH /users/:id/status` | core:pengguna | CR-02 | ✅ |
@@ -98,10 +98,10 @@ Prefix semua endpoint: `/api/v1`. Status: ✅ sudah berjalan, ⏳ masih `TODO` (
 |---|---|---|---|
 | `GET /categories` · `POST /categories` | keuangan:kelola | KU-01 | ✅ |
 | `PATCH /categories/:id` · `DELETE /categories/:id` | keuangan:kelola | KU-01 | ✅ |
-| `GET /transactions` (debit-kredit + saldo berjalan) | keuangan:kelola | KU-04 | ⏳ |
+| `GET /transactions` (debit-kredit + saldo berjalan) | keuangan:kelola | KU-04 | ✅ |
 | `POST /transactions` | keuangan:kelola | KU-02 | ✅ |
 | `PATCH /transactions/:id` · `DELETE /transactions/:id` | keuangan:kelola | KU-03 | ✅ |
-| `GET /summary?bulan=YYYY-MM` | keuangan:lihat | KU-05 | ⏳ |
+| `GET /summary?bulan=YYYY-MM` | keuangan:lihat | KU-05 | ✅ |
 
 ### Format respons
 
@@ -118,7 +118,6 @@ Prefix semua endpoint: `/api/v1`. Status: ✅ sudah berjalan, ⏳ masih `TODO` (
 | 404 | Data tidak ditemukan |
 | 409 | Data duplikat atau masih dipakai data lain |
 | 413 | Foto lebih dari 500 KB |
-| 501 | Endpoint belum diimplementasikan |
 
 ## 5. Aturan Bisnis
 
@@ -142,15 +141,15 @@ Catatan tanggal: "hari ini" selalu dihitung dalam **WIB** lewat `shared/utils/da
 
 ## 6. Database
 
-Satu database MySQL 8, 10 tabel, dipisah dengan awalan:
+Satu database MySQL 8, 11 tabel (10 tabel rancangan awal + core_sessions untuk pencabutan sesi NF-04), dipisah dengan awalan:
 
-- **core_**: `core_users`, `core_roles`, `core_role_permissions`, `core_office_settings` (1 baris, id = 1)
+- **core_**: `core_users`, `core_roles`, `core_role_permissions`, `core_sessions`, `core_office_settings` (1 baris, id = 1)
 - **mg_**: `mg_interns`, `mg_attendances`, `mg_logbooks`, `mg_tasks`
 - **ku_**: `ku_categories`, `ku_transactions`
 
 Satu-satunya relasi lintas modul adalah `mg_interns.user_id → core_users.id`.
 Kolom `dibuat_oleh` dan `dikoreksi_oleh` menyimpan id pengguna **tanpa foreign key** (untuk audit).
-Schema Prisma ada di `prisma/schema/` (satu file per modul) dan harus selalu sama dengan ERD di dokumen Rancangan Database.
+Schema Prisma ada di `prisma/schema/` (satu file per modul). Tambahan core_sessions terhadap PDF dijelaskan beserta DBML di docs/PERUBAHAN-DATABASE.md; baseline migration tidak diubah.
 
 Foto absensi disimpan di `UPLOAD_DIR/attendances/` (Railway Volume). Database hanya menyimpan nama filenya.
 

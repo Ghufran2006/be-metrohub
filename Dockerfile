@@ -2,7 +2,7 @@
 FROM node:22-slim
 
 # OpenSSL dibutuhkan Prisma engine
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl default-mysql-client && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -13,6 +13,7 @@ COPY prisma ./prisma
 RUN npx prisma generate
 
 COPY src ./src
+COPY scripts ./scripts
 COPY public ./public
 
 ENV NODE_ENV=production

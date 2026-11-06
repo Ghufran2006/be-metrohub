@@ -1,15 +1,6 @@
-const jwt = require('jsonwebtoken');
-const env = require('../../config/env');
 const prisma = require('../../config/prisma');
 const { AppError } = require('../utils/AppError');
-
-// Token dibaca dari cookie httpOnly "token", atau header Authorization: Bearer <token>
-function ambilToken(req) {
-  if (req.cookies?.token) return req.cookies.token;
-  const header = req.headers.authorization;
-  if (header?.startsWith('Bearer ')) return header.slice(7);
-  return null;
-}
+const { ambilToken, verifikasiToken } = require('../../core/auth/session');
 
 // Memastikan request berasal dari pengguna yang login dan akunnya masih aktif.
 // User dan permission dibaca ulang dari database setiap request, sehingga
@@ -20,17 +11,20 @@ async function authenticate(req, res, next) {
 
   let payload;
   try {
-    payload = jwt.verify(token, env.JWT_SECRET);
+    payload = verifikasiToken(token);
   } catch {
     throw new AppError(401, 'Sesi tidak valid atau sudah berakhir');
   }
 
-  const user = await prisma.coreUser.findUnique({
-    where: { id: Number(payload.sub) },
-    include: { role: { include: { permissions: true } } },
+  const session = await prisma.coreSession.findUnique({
+    where: { id: payload.jti },
+    include: { user: { include: { role: { include: { permissions: true } } } } },
   });
+  const user = session?.user;
 
-  if (!user || !user.aktif) throw new AppError(401, 'Sesi tidak valid atau sudah berakhir');
+  if (!user?.aktif || session.user_id !== Number(payload.sub) || session.expires_at <= new Date()) {
+    throw new AppError(401, 'Sesi tidak valid atau sudah berakhir');
+  }
 
   req.user = {
     id: user.id,

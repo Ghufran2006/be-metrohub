@@ -6,9 +6,4 @@ class AppError extends Error {
   }
 }
 
-// Dipakai di service yang belum dikerjakan, contoh: throw notImplemented('MG-03')
-function notImplemented(kode) {
-  return new AppError(501, `Belum diimplementasikan (${kode})`);
-}
-
-module.exports = { AppError, notImplemented };
+module.exports = { AppError };
